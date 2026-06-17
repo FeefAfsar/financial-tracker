@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 
@@ -5,27 +6,24 @@ import { Plus, Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import { scanReceiptWithGemini } from './services/geminiService';
 
-// IMPORT SUB-KOMPONEN UI BARU KITA
+// IMPORT SUB-KOMPONEN UI
 import Header from './components/Header';
 import SummaryCards from './components/SummaryCards';
 import ChartWidget from './components/ChartWidget';
 import TargetCard from './components/TargetCard';
 import TransactionList from './components/TransactionList';
+import MonthlyChart from './components/MonthlyChart'; // <-- IMPORT BARU
 import { InputModal, DetailModal, TargetModal } from './components/Modals';
 
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [summary, setSummary] = useState({ balance: 0, 
-                                           total_income: 0, 
-                                           total_expense: 0, 
-                                           category_expenses: [], 
-                                           top_category: 'Belum Ada', 
-                                           burn_rate: 0 });
-  const [prediction, setPrediction] = useState({ runwayDays: '∞', 
-                                                 targetDays: 'Calculating...', 
-                                                 statusMessage: 'Mengumpulkan data...' });
+  const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
+  const [prediction, setPrediction] = useState({ runwayDays: '∞', targetDays: 'Calculating...', statusMessage: 'Mengumpulkan data...' });
   const [activePieIndex, setActivePieIndex] = useState(-1);
+
+  // 📅 State Baru Filter Rentang Tanggal Kalender
+  const [dateFilter, setDateFilter] = useState({ startDate: '', endDate: '' });
 
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('afif_categories');
@@ -175,50 +173,39 @@ function App() {
     setIsScanning(false);
   };
 
-  const filteredTransactions = transactions.filter(t => (t.description || t.category).toLowerCase().includes(searchQuery.toLowerCase()) && (filterType === 'all' || t.type === filterType));
+  // 📅 LOGIKA FILTER MULTI-DIMENSI (Search + Type + Kalender Date Range)
+  const filteredTransactions = transactions.filter(t => {
+    const matchesSearch = (t.description || t.category).toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = filterType === 'all' || t.type === filterType;
+    
+    // Validasi range tanggal kalender
+    let matchesDate = true;
+    if (dateFilter.startDate) matchesDate = matchesDate && t.date >= dateFilter.startDate;
+    if (dateFilter.endDate) matchesDate = matchesDate && t.date <= dateFilter.endDate;
+
+    return matchesSearch && matchesType && matchesDate;
+  });
+
   const targetProgress = Math.min(Math.round((summary.balance / savingTarget.price) * 100), 100);
 
   return (
-    <div 
-      className="min-h-screen bg-zinc-50 dark:bg-neutral-950 text-zinc-900 dark:text-zinc-100 p-4 pb-28 md:p-8 transition-colors duration-500 relative w-full max-w-[100vw] overflow-x-hidden selection:bg-emerald-500/20"
-      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-    >
-      {/* INJEKSI OTOMATIS FONT & CORE ESSENTIAL FLUID ANIMATION ENGINE */}
+    <div className="min-h-screen bg-zinc-50 dark:bg-neutral-950 text-zinc-900 dark:text-zinc-100 p-4 pb-28 md:p-8 transition-colors duration-500 relative w-full max-w-[100vw] overflow-x-hidden selection:bg-emerald-500/20" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; }
-        
-        /* Apple & Vercel Style Custom Premium Easing Curve */
         .fluid-bounce { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
         .click-feedback { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
         .click-feedback:active { transform: scale(0.96); }
-
-        /* Keyframes Kedatangan Dashboard */
-        @keyframes fluidFadeUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes overlayFade {
-          from { opacity: 0; backdrop-filter: blur(0px); }
-          to { opacity: 1; backdrop-filter: blur(8px); }
-        }
-        @keyframes modalSpring {
-          from { opacity: 0; transform: scale(0.96) translateY(12px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-
-        /* Utility Classes */
+        @keyframes fluidFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes overlayFade { from { opacity: 0; backdrop-filter: blur(0px); } to { opacity: 1; backdrop-filter: blur(8px); } }
+        @keyframes modalSpring { from { opacity: 0; transform: scale(0.96) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .animate-dashboard-load { animation: fluidFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .animate-overlay-show { animation: overlayFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .animate-modal-show { animation: modalSpring 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        
-        /* Stagger delays untuk efek koreografi kedatangan */
         .delay-card-1 { animation-delay: 50ms; opacity: 0; }
         .delay-card-2 { animation-delay: 120ms; opacity: 0; }
         .delay-card-3 { animation-delay: 180ms; opacity: 0; }
         .delay-card-4 { animation-delay: 240ms; opacity: 0; }
-
-        /* Custom scrollbar premium */
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 99px; }
@@ -237,15 +224,18 @@ function App() {
       ) : (
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
           <SummaryCards summary={summary} prediction={prediction} />
+          
+          {/* 📊 GRAFIK TREN BULANAN BARU (Ditempatkan Sejajar Atas Layout) */}
+          <MonthlyChart transactions={transactions} />
+
           <ChartWidget summary={summary} theme={theme} activePieIndex={activePieIndex} setActivePieIndex={setActivePieIndex} />
           <div className="md:col-span-2 grid grid-cols-1 gap-5">
             <TargetCard savingTarget={savingTarget} targetProgress={targetProgress} prediction={prediction} setIsTargetModalOpen={setIsTargetModalOpen} />
-            <TransactionList searchQuery={searchQuery} setSearchQuery={setSearchQuery} filterType={filterType} setFilterType={setFilterType} filteredTransactions={filteredTransactions} setSelectedTxDetail={setSelectedTxDetail} handleDelete={handleDelete} transactions={transactions} />
+            <TransactionList searchQuery={searchQuery} setSearchQuery={setSearchQuery} filterType={filterType} setFilterType={setFilterType} filteredTransactions={filteredTransactions} setSelectedTxDetail={setSelectedTxDetail} handleDelete={handleDelete} transactions={transactions} dateFilter={dateFilter} setDateFilter={setDateFilter} />
           </div>
         </main>
       )}
 
-      {/* FAB Button dengan feedback pegas empuk */}
       <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 bg-emerald-600 dark:bg-emerald-500 text-white p-4 rounded-full shadow-lg z-50 hover:scale-110 active:scale-90 shadow-emerald-600/20 transition-transform duration-300 ease-out"><Plus size={26} /></button>
 
       <InputModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} formData={formData} setFormData={setFormData} handleSubmit={handleSubmit} handleScanReceipt={handleScanReceipt} isScanning={isScanning} categories={categories} showAddCategoryInput={showAddCategoryInput} setShowAddCategoryInput={setShowAddCategoryInput} customCategoryName={customCategoryName} setCustomCategoryName={setCustomCategoryName} handleAddCustomCategory={handleAddCustomCategory} />
