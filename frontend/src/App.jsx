@@ -64,10 +64,12 @@ function App() {
   }, [categories]);
 
   const fetchTransactions = async () => {
-    setIsLoading(true);
-    const { data, error } = await supabase.from('transactions').select('*').order('id', { ascending: false });
-    if (!error) setTransactions(data || []);
-    setIsLoading(false);
+      setIsLoading(true);
+      console.log("Mencoba memanggil Supabase...");
+      const { data, error } = await supabase.from('transactions').select('*').order('id', { ascending: false });
+      console.log("Hasil:", { data, error }); // <--- LIHAT DI CONSOLE BROWSER
+      if (!error) setTransactions(data || []);
+      setIsLoading(false);
   };
 
   useEffect(() => {
