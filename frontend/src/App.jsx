@@ -14,6 +14,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
   
+  // State index chart yang sedang aktif/disentuh
+  const [activePieIndex, setActivePieIndex] = useState(-1);
+
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('afif_categories');
     return saved ? JSON.parse(saved) : ['Makanan', 'Kos', 'Kuliah', 'Shopping', 'Lainnya'];
@@ -232,7 +235,7 @@ function App() {
       {isLoading ? (
         <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-slate-400 font-mono text-sm gap-3">
           <Loader2 className="animate-spin text-cyan-500" size={32} />
-          <span>CONNECTING TO FIN-CORE CLABASE...</span>
+          <span>CONNECTING TO FIN-CORE CLOUD DATABASE...</span>
         </div>
       ) : (
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
@@ -264,7 +267,7 @@ function App() {
             </div>
           </div>
 
-          {/* CHART WIDGET */}
+          {/* CHART WIDGET (SUDAH FIX 100% BEBAS TABRAKAN TEKS DI MOBILE) */}
           <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
@@ -286,21 +289,36 @@ function App() {
                         outerRadius={65} 
                         paddingAngle={4}
                         label={({ category }) => `${category}`} 
-                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }} 
+                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }}
+                        // Logika pendeteksi sentuhan jempol / kursor lokal
+                        onMouseEnter={(_, index) => setActivePieIndex(index)}
+                        onMouseLeave={() => setActivePieIndex(-1)}
+                        onClick={(_, index) => setActivePieIndex(activePieIndex === index ? -1 : index)}
                       >
                         {summary.category_expenses.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', borderRadius: '12px', border: '1px solid rgba(147, 51, 234, 0.2)' }} 
-                        formatter={(value) => `Rp ${value.toLocaleString('id-ID')}`} 
-                      />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute flex flex-col items-center pointer-events-none">
-                    <p className="text-[9px] text-slate-400 font-bold uppercase font-mono tracking-wider">Burn Rate</p>
-                    <p className="text-xl font-black text-slate-800 dark:text-white">{summary.burn_rate}%</p>
+                  
+                  {/* PUSAT SENTRAL INTERAKTIF: Mengubah konten secara dinamis tanpa tooltip menabrak */}
+                  <div className="absolute flex flex-col items-center pointer-events-none text-center px-2 max-w-[90px]">
+                    {activePieIndex !== -1 && summary.category_expenses[activePieIndex] ? (
+                      <>
+                        <p className="text-[10px] font-black text-cyan-500 dark:text-cyan-400 uppercase truncate max-w-full">
+                          {summary.category_expenses[activePieIndex].category}
+                        </p>
+                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 tracking-tight">
+                          Rp {Math.round(summary.category_expenses[activePieIndex].total).toLocaleString('id-ID')}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase font-mono tracking-wider">Burn Rate</p>
+                        <p className="text-xl font-black text-slate-800 dark:text-white">{summary.burn_rate}%</p>
+                      </>
+                    )}
                   </div>
                 </>
               ) : (
@@ -416,14 +434,13 @@ function App() {
                        ))}
                      </select>
                      
-                     {/* 📱 TOMBOL BARU: Jauh lebih tebal, empuk, berukuran balok pas, dan aman dari salah klik jempol di HP */}
+                     {/* OPTIMASI HP: Tombol empuk pemicu form tambah kategori baru (Lebar & Tebal) */}
                      <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 dark:border-cyan-800/40 text-cyan-600 dark:text-cyan-400'}`}>
                        {showAddCategoryInput ? '✕ BATAL KATEGORI' : '+ TAMBAH KATEGORI'}
                      </button>
                    </div>
                 </div>
 
-                {/* Input kategori baru */}
                 {showAddCategoryInput && (
                   <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-850 flex gap-2 animate-content">
                     <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
