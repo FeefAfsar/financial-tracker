@@ -4,17 +4,30 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { createClient } from '@supabase/supabase-js';
 
 // ======================= CONFIGURATION BLOCK =======================
+// 1. DATABASE CLOUD CONFIG (SUPABASE)
 const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aWV0cWhxYWptZ2d1Y3pjZGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDE3MzYsImV4cCI6MjA5NzI3NzczNn0._lKMrJ2aQIaYHU0XJbVt5XbS5AdR4bKxpchCiutAmyc'; 
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// 2. OTAK INTELLIGENCE CONFIG (GOOGLE GEMINI AI)
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 // ===================================================================
+
+// Helper function untuk mengonversi berkas gambar struk menjadi format teks Base64 agar dapat dibaca oleh Gemini AI
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = (error) => reject(error);
+  });
+};
 
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
   
-  // State index chart yang sedang aktif/disentuh
   const [activePieIndex, setActivePieIndex] = useState(-1);
 
   const [categories, setCategories] = useState(() => {
@@ -175,22 +188,68 @@ function App() {
     setIsTargetModalOpen(false);
   };
 
-  const handleScanReceipt = (e) => {
+  // ==================== OPERASI UTAMA REST API GOOGLE GEMINI AI ====================
+  const handleScanReceipt = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('MASUKKAN_API_KEY_GEMINI')) {
+      alert('⚠️ Hubungkan terlebih dahulu API Key Gemini valid kamu pada blok konfigurasi!');
+      return;
+    }
+
     setIsScanning(true);
-    setTimeout(() => {
+
+    try {
+      // 1. Ekstrak data biner file menjadi string Base64 murni
+      const base64Data = await fileToBase64(file);
+
+      // 2. Tembak REST API Endpoint Google Gemini secara native
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { 
+                  text: `Kamu adalah sistem Fin-Core AI OCR. Analisis gambar struk belanja, nota, bukti transfer, atau bukti bayar QRIS ini. Ekstrak informasi total biaya (amount), kategori yang cocok (category), dan deskripsi singkat (description). Kamu WAJIB mengembalikan jawaban HANYA berbentuk format JSON bersih tanpa bungkus markdown/backticks. Skema format JSON yang wajib diikuti: { "amount": "angka_bulat_total_tanpa_titik_atau_rupiah", "category": "Pilih teks yang paling relevan dari daftar ini: Makanan, Kos, Kuliah, Shopping, atau Lainnya", "description": "Keterangan singkat barang/jasa yang dibeli, maksimal 5 kata" }` 
+                },
+                { inlineData: { mimeType: file.type, data: base64Data } }
+              ]
+            }],
+            generationConfig: {
+              responseMimeType: "application/json" // Memaksa respon model 100% berupa skema JSON murni
+            }
+          })
+        }
+      );
+
+      const result = await response.json();
+      
+      // 3. Dekode teks respon JSON mentah dari Gemini
+      const aiTextResult = result.candidates[0].content.parts[0].text;
+      const parsedAiData = JSON.parse(aiTextResult);
+
+      // 4. Masukkan hasil analisis AI ke form state secara otomatis
       setFormData({
         ...formData,
-        amount: '45000',
+        amount: parsedAiData.amount || '',
         type: 'expense',
-        category: 'Makanan',
-        description: 'Makan Nasi Padang (Hasil Scan QRIS)',
+        category: categories.includes(parsedAiData.category) ? parsedAiData.category : 'Lainnya',
+        description: parsedAiData.description || 'Hasil Otomatis AI',
         date: new Date().toISOString().split('T')[0]
       });
+
+    } catch (error) {
+      console.error('AI OCR Integration Failure:', error);
+      alert('Gagal memproses gambar. Pastikan resolusi kamera jelas dan teks struk terbaca!');
+    } finally {
       setIsScanning(false);
-    }, 2000);
+    }
   };
+  // =================================================================================
 
   const filteredTransactions = transactions.filter(t => {
     const matchesSearch = (t.description || t.category).toLowerCase().includes(searchQuery.toLowerCase());
@@ -267,7 +326,7 @@ function App() {
             </div>
           </div>
 
-          {/* CHART WIDGET (SUDAH FIX 100% BEBAS TABRAKAN TEKS DI MOBILE) */}
+          {/* CHART WIDGET */}
           <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
@@ -290,7 +349,6 @@ function App() {
                         paddingAngle={4}
                         label={({ category }) => `${category}`} 
                         labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }}
-                        // Logika pendeteksi sentuhan jempol / kursor lokal
                         onMouseEnter={(_, index) => setActivePieIndex(index)}
                         onMouseLeave={() => setActivePieIndex(-1)}
                         onClick={(_, index) => setActivePieIndex(activePieIndex === index ? -1 : index)}
@@ -302,7 +360,6 @@ function App() {
                     </PieChart>
                   </ResponsiveContainer>
                   
-                  {/* PUSAT SENTRAL INTERAKTIF: Mengubah konten secara dinamis tanpa tooltip menabrak */}
                   <div className="absolute flex flex-col items-center pointer-events-none text-center px-2 max-w-[90px]">
                     {activePieIndex !== -1 && summary.category_expenses[activePieIndex] ? (
                       <>
@@ -402,14 +459,15 @@ function App() {
               <button onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
               <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Log Fin-Core</h3>
               
+              {/* AI SCANNER ENGINE (SUDAH AKTIF GEMINI SECARA NYATA) */}
               <div className="mb-5 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-500/30 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Camera className="text-purple-600 dark:text-purple-400" size={16} />
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto-Fill by AI</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto-Fill by Gemini 1.5 Flash</span>
                 </div>
-                <label className="cursor-pointer px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm">
+                <label className={`cursor-pointer px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-all ${isScanning ? 'opacity-60 cursor-not-allowed scale-95' : 'active:scale-95'}`}>
                   {isScanning ? <Loader2 className="animate-spin" size={14} /> : <UploadCloud size={14} />}
-                  {isScanning ? 'SCANNING...' : 'UPLOAD QRIS'}
+                  {isScanning ? 'AI READING...' : 'UPLOAD QRIS / STRUK'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleScanReceipt} disabled={isScanning} />
                 </label>
               </div>
@@ -434,7 +492,6 @@ function App() {
                        ))}
                      </select>
                      
-                     {/* OPTIMASI HP: Tombol empuk pemicu form tambah kategori baru (Lebar & Tebal) */}
                      <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 dark:border-cyan-800/40 text-cyan-600 dark:text-cyan-400'}`}>
                        {showAddCategoryInput ? '✕ BATAL KATEGORI' : '+ TAMBAH KATEGORI'}
                      </button>
@@ -453,7 +510,7 @@ function App() {
                   <input type="text" placeholder="Rincian catatan..." className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
+                  <button type="button" onClick={(e) => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
                   <button type="submit" className="w-1/2 p-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold">SIMPAN LOG</button>
                 </div>
               </form>
