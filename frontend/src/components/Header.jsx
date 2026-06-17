@@ -1,13 +1,15 @@
 import React from 'react';
-import { Sparkles, Sun, Moon } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
+import Logo from './Logo'; 
 
 export default function Header({ theme, toggleTheme }) {
   return (
     <header className="max-w-6xl mx-auto mb-8 flex flex-col items-center text-center sm:flex-row sm:text-left sm:items-center sm:justify-between gap-4 relative z-10 w-full">
       <div className="flex flex-col items-center sm:items-start w-full">
         <div className="flex items-center gap-2.5">
-          <span className="p-2 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-xl shadow-sm">
-            <Sparkles size={20} />
+          {/* Logo dipanggil di sini dengan ukuran yang pas */}
+          <span className="p-1.5 bg-emerald-100 dark:bg-emerald-950 rounded-xl shadow-sm border border-emerald-100 dark:border-emerald-900/50">
+            <Logo size={28} className="w-7 h-7" />
           </span>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50 uppercase">
             Afif Fin-Core

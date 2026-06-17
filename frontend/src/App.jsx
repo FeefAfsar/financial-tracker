@@ -52,8 +52,11 @@ function App() {
   const [targetFormData, setTargetFormData] = useState({ name: savingTarget.name, price: savingTarget.price });
 
   useEffect(() => {
-    document.title = "Fin-Core Afif's";
-    fetchTransactions();
+    const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+    link.rel = 'icon';
+    link.href = '/logo.svg'; // Pastikan file logo.svg ada di folder 'public'
+    document.head.appendChild(link);
+    document.title = "Fin-Core | Dashboard";
   }, []);
 
   useEffect(() => {
@@ -217,9 +220,10 @@ function App() {
       <Header theme={theme} toggleTheme={toggleTheme} />
 
       {isLoading ? (
-        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-zinc-400 font-mono text-sm gap-3">
-          <Loader2 className="animate-spin text-emerald-500" size={32} />
-          <span>CONNECTING TO FIN-CORE CLOUD DATABASE...</span>
+        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-zinc-400 font-mono text-sm gap-4">
+          {/* Logo Loading dengan efek pulse */}
+          <img src="/logo.svg" alt="Loading" className="w-12 h-12 animate-pulse opacity-80" />
+          <span className="tracking-widest animate-pulse font-bold text-emerald-500">SYNCING CORE...</span>
         </div>
       ) : (
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
