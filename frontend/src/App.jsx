@@ -1,20 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Wallet, ArrowUpRight, ArrowDownRight, X, Trash2, Search, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon } from 'lucide-react';
+import { Plus, Wallet, ArrowUpRight, ArrowDownRight, X, Trash2, Search, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon, Tag, Calendar, Layers } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-// Import library Supabase resmi
 import { createClient } from '@supabase/supabase-js';
 
-// ================= SUPABASE CLOUD CONFIGURATION =================
+// ======================= CONFIGURATION BLOCK =======================
 const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
-// Ganti teks di bawah ini dengan ANON KEY panjang yang kamu copy dari Supabase tadi ya!
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aWV0cWhxYWptZ2d1Y3pjZGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDE3MzYsImV4cCI6MjA5NzI3NzczNn0._lKMrJ2aQIaYHU0XJbVt5XbS5AdR4bKxpchCiutAmyc'; 
+const SUPABASE_ANON_KEY = 'TEMPELKAN_ANON_KEY_SUPABASE_KAMU_DI_SINI'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ===================================================================
 
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
   
+  // State untuk daftar kategori dinamis
+  const [categories, setCategories] = useState(() => {
+    const saved = localStorage.getItem('afif_categories');
+    return saved ? JSON.parse(saved) : ['Makanan', 'Kos', 'Kuliah', 'Shopping', 'Lainnya'];
+  });
+  const [showAddCategoryInput, setShowAddCategoryInput] = useState(false);
+  const [customCategoryName, setCustomCategoryName] = useState('');
+
+  // State baru untuk modal detail transaksi saat baris log diklik
+  const [selectedTxDetail, setSelectedTxDetail] = useState(null);
+
   const [savingTarget, setSavingTarget] = useState(() => {
     const saved = localStorage.getItem('afif_saving_target');
     return saved ? JSON.parse(saved) : { name: 'Make Over Kamar', price: 2000000 };
@@ -30,17 +40,31 @@ function App() {
   const [formData, setFormData] = useState({ amount: '', type: 'expense', category: 'Makanan', description: '', date: new Date().toISOString().split('T')[0] });
   const [targetFormData, setTargetFormData] = useState({ name: savingTarget.name, price: savingTarget.price });
 
-  // 1. Ambil data transaksi langsung dari Cloud Supabase saat pertama dibuka
+  // PENTING: Mengubah Title Browser & Injeksi Logo Kustom Otomatis
   useEffect(() => {
+    document.title = "Fin-Core Afif's";
+    
+    // Injeksi Favicon Kustom (Mengganti Logo default bawaan)
+    const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
+    link.type = 'image/svg+xml';
+    link.rel = 'shortcut icon';
+    link.href = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2306b6d4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/></svg>`;
+    document.getElementsByTagName('head')[0].appendChild(link);
+    
     fetchTransactions();
   }, []);
+
+  // Simpan Kategori Baru ke LocalStorage biar awet
+  useEffect(() => {
+    localStorage.setItem('afif_categories', JSON.stringify(categories));
+  }, [categories]);
 
   const fetchTransactions = async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
-      .order('id', { ascending: false }); // Urutan log paling baru di atas
+      .order('id', { ascending: false });
 
     if (error) {
       console.error('Gagal sinkronisasi data cloud:', error.message);
@@ -50,12 +74,10 @@ function App() {
     setIsLoading(false);
   };
 
-  // 2. Hitung statistik otomatis setiap ada data baru dari cloud
   useEffect(() => {
     calculateSummary(transactions);
   }, [transactions]);
 
-  // Efek ganti Theme
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') root.classList.add('dark');
@@ -91,7 +113,17 @@ function App() {
     setSummary({ balance, total_income: totalIncome, total_expense: totalExpense, category_expenses: categoryExpenses, top_category: topCategory, burn_rate: burnRate });
   };
 
-  // 3. Fungsi Simpan Transaksi Baru LANGSUNG ke Cloud Supabase
+  const handleAddCustomCategory = (e) => {
+    e.preventDefault();
+    if (customCategoryName.trim() && !categories.includes(customCategoryName.trim())) {
+      const updatedCats = [...categories, customCategoryName.trim()];
+      setCategories(updatedCats);
+      setFormData({ ...formData, category: customCategoryName.trim() });
+      setCustomCategoryName('');
+      setShowAddCategoryInput(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const inputAmount = parseFloat(formData.amount);
@@ -108,7 +140,6 @@ function App() {
       date: formData.date
     };
 
-    // Push data ke cloud
     const { data, error } = await supabase
       .from('transactions')
       .insert([newTransaction])
@@ -117,15 +148,14 @@ function App() {
     if (error) {
       alert(`Gagal push ke database cloud: ${error.message}`);
     } else if (data) {
-      // Perbarui state lokal secara instan biar UI responsif
       setTransactions([data[0], ...transactions]);
       setIsModalOpen(false);
       setFormData({ ...formData, amount: '', description: '' }); 
     }
   };
 
-  // 4. Fungsi Hapus Transaksi dari Cloud Supabase
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    e.stopPropagation(); // Mencegah modal pop-up terbuka ketika menekan tombol hapus
     if (window.confirm("Hapus log transaksi ini dari database cloud?")) {
       const { error } = await supabase
         .from('transactions')
@@ -136,6 +166,7 @@ function App() {
         alert(`Gagal menghapus log cloud: ${error.message}`);
       } else {
         setTransactions(transactions.filter(t => t.id !== id));
+        if (selectedTxDetail?.id === id) setSelectedTxDetail(null);
       }
     }
   };
@@ -146,7 +177,7 @@ function App() {
     setIsTargetModalOpen(false);
   };
 
-  // Simulasi AI Scanner
+  // Simulasi AI Scanner Layout
   const handleScanReceipt = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -170,13 +201,13 @@ function App() {
   });
 
   const targetProgress = Math.min(Math.round((summary.balance / savingTarget.price) * 100), 100);
-  const CHART_COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'];
+  const CHART_COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#f43f5e'];
 
   const animationStyles = `
     @keyframes overlayShow { from { opacity: 0; backdrop-filter: blur(0px); } to { opacity: 1; backdrop-filter: blur(4px); } }
     @keyframes contentShow { from { opacity: 0; transform: scale(0.95) translateY(15px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-    .anim-overlay { animation: overlayShow 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    .anim-content { animation: contentShow 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .anim-overlay { animation: overlayShow 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .anim-content { animation: contentShow 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
   `;
 
   return (
@@ -206,7 +237,7 @@ function App() {
       {/* SINKRONISASI LOADING STATUS */}
       {isLoading ? (
         <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-slate-400 font-mono text-sm gap-3">
-          <Loader2 size={32} className="animate-spin text-cyan-500" />
+          <Loader2 className="animate-spin text-cyan-500" size={32} />
           <span>CONNECTING TO FIN-CORE CLOUD DATABASE...</span>
         </div>
       ) : (
@@ -239,33 +270,48 @@ function App() {
             </div>
           </div>
 
-          {/* CHART WIDGET */}
+          {/* CHART WIDGET (SUDAH DIPERBAIKI SUPAYA TEKS DI LUAR KETIKA DI-HOVER/KLIK) */}
           <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
               <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Proporsi Alokasi</h4>
             </div>
             
-            <div className="h-44 w-full flex items-center justify-center relative my-2">
+            <div className="h-52 w-full flex items-center justify-center relative my-1">
               {summary.category_expenses.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={summary.category_expenses} dataKey="total" nameKey="category" cx="50%" cy="50%" innerRadius={55} outerRadius={75} paddingAngle={3}>
+                      <Pie 
+                        data={summary.category_expenses} 
+                        dataKey="total" 
+                        nameKey="category" 
+                        cx="50%" 
+                        cy="50%" 
+                        innerRadius={50} 
+                        outerRadius={68} 
+                        paddingAngle={4}
+                        label={({ category }) => `${category}`} // Melempar teks label otomatis ke luar lingkaran
+                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }} // Garis petunjuk
+                      >
                         {summary.category_expenses.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', borderRadius: '12px', border: 'none' }} formatter={(value) => `Rp ${value.toLocaleString('id-ID')}`} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#fff', borderRadius: '12px', border: '1px solid rgba(147, 51, 234, 0.2)' }} 
+                        formatter={(value) => `Rp ${value.toLocaleString('id-ID')}`} 
+                      />
                     </PieChart>
                   </ResponsiveContainer>
+                  {/* Bagian Tengah Murni Bersih Hanya untuk Burn Rate Utama */}
                   <div className="absolute flex flex-col items-center pointer-events-none">
-                    <p className="text-[9px] text-slate-500 font-bold uppercase font-mono">Burn Rate</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase font-mono tracking-wider">Burn Rate</p>
                     <p className="text-xl font-black text-slate-800 dark:text-white">{summary.burn_rate}%</p>
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-400 italic font-mono">Belum ada data</p>
+                <p className="text-xs text-slate-400 italic font-mono">Belum ada data pengeluaran</p>
               )}
             </div>
             
@@ -307,18 +353,19 @@ function App() {
                   <button onClick={() => setFilterType('expense')} className={`px-4 py-2 rounded-lg ${filterType === 'expense' ? 'bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-400 shadow-sm' : 'text-slate-500'}`}>OUT</button>
                 </div>
               </div>
-              <div className="space-y-3 w-full max-h-52 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-3 w-full max-h-64 overflow-y-auto pr-2 custom-scrollbar">
                 {filteredTransactions.map((t) => (
-                  <div key={t.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-100 dark:border-slate-900 w-full gap-3">
+                  // Menambahkan Event onClick untuk membuka modal pop-up detail rincian transaksi
+                  <div key={t.id} onClick={() => setSelectedTxDetail(t)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{t.description || t.category}</p>
-                      <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">{t.date}</p>
+                      <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-cyan-500 transition-colors">{t.description || t.category}</p>
+                      <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">{t.date} • <span className="text-purple-500 dark:text-purple-400 font-bold uppercase">{t.category}</span></p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className={`font-mono font-black text-sm ${t.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
                         {t.type === 'income' ? '+' : '-'} Rp {parseFloat(t.amount).toLocaleString('id-ID')}
                       </span>
-                      <button onClick={() => handleDelete(t.id)} className="text-slate-400 hover:text-rose-500 p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                      <button onClick={(e) => handleDelete(t.id, e)} className="text-slate-400 hover:text-rose-500 p-2 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -338,20 +385,20 @@ function App() {
         <Plus size={28} />
       </button>
 
-      {/* MODAL INPUT */}
+      {/* MODAL INPUT TRANSAKSI */}
       {isModalOpen && (
          <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay">
            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
+              <button onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
               <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Log Fin-Core</h3>
               
               <div className="mb-5 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-500/30 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Camera size={16} className="text-purple-600 dark:text-purple-400" />
+                  <Camera className="text-purple-600 dark:text-purple-400" size={16} />
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto-Fill by AI</span>
                 </div>
                 <label className="cursor-pointer px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm">
-                  {isScanning ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                  {isScanning ? <Loader2 className="animate-spin" size={14} /> : <UploadCloud size={14} />}
                   {isScanning ? 'SCANNING...' : 'UPLOAD QRIS'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleScanReceipt} disabled={isScanning} />
                 </label>
@@ -365,23 +412,38 @@ function App() {
                 <div className="grid grid-cols-2 gap-3">
                    <div>
                      <label className="block font-bold text-slate-500 uppercase mb-2">Arus Data</label>
-                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}>
+                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}>
                        <option value="expense">OUTFLOW</option><option value="income">INFLOW</option>
                      </select>
                    </div>
                    <div>
                      <label className="block font-bold text-slate-500 uppercase mb-2">Kategori</label>
-                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
-                       <option value="Makanan">Makanan</option><option value="Kos">Kos</option><option value="Kuliah">Kuliah</option>
+                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
+                       {categories.map(cat => (
+                         <option key={cat} value={cat}>{cat}</option>
+                       ))}
                      </select>
+                     {/* Tombol pemicu tambah kategori baru secara fleksibel */}
+                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className="text-[10px] text-cyan-500 hover:text-cyan-400 font-bold mt-1 block transition-colors">
+                       {showAddCategoryInput ? '✕ Batal' : '+ Tambah Kategori Baru'}
+                     </button>
                    </div>
                 </div>
+
+                {/* Input text tambahan jika user ingin membuat kategori kustom sendiri */}
+                {showAddCategoryInput && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-850 flex gap-2 animate-content">
+                    <input type="text" placeholder="Nama kategori baru..." className="w-full p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
+                    <button type="button" onClick={handleAddCustomCategory} className="px-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">TAMBAH</button>
+                  </div>
+                )}
+
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Deskripsi</label>
                   <input type="text" placeholder="Rincian catatan..." className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
+                  <button type="button" onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
                   <button type="submit" className="w-1/2 p-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold">SIMPAN LOG</button>
                 </div>
               </form>
@@ -389,24 +451,71 @@ function App() {
          </div>
       )}
 
-      {/* MODAL CONFIG TARGET */}
+      {/* MODAL BARU: DETAIL POP-UP RINCIAN TRANSAKSI */}
+      {selectedTxDetail && (
+        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay" onClick={() => setSelectedTxDetail(null)}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl p-6 md:p-7 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setSelectedTxDetail(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+            <h3 className="text-sm font-black mb-5 text-slate-500 uppercase tracking-widest">Detail Transaksi</h3>
+            
+            <div className="space-y-4">
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 dark:border-slate-900 text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Mutasi</p>
+                <p className={`text-2xl font-black ${selectedTxDetail.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
+                  {selectedTxDetail.type === 'income' ? '+' : '-'} Rp {parseFloat(selectedTxDetail.amount).toLocaleString('id-ID')}
+                </p>
+              </div>
+
+              <div className="space-y-2.5 px-1">
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Layers size={14} /> Arus Data</span>
+                  <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>
+                    {selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Tag size={14} /> Kategori</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 capitalize">{selectedTxDetail.category}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Calendar size={14} /> Tanggal</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{selectedTxDetail.date}</span>
+                </div>
+                <div className="pt-1">
+                  <span className="text-slate-400 font-bold block mb-1">Rincian Deskripsi:</span>
+                  <p className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-800 dark:text-slate-300 font-sans text-sm leading-relaxed border border-slate-100 dark:border-slate-900 break-words">
+                    {selectedTxDetail.description || <span className="italic text-xs text-slate-400 font-mono">Tidak ada keterangan deskripsi</span>}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-3 flex gap-2">
+                <button onClick={() => setSelectedTxDetail(null)} className="w-2/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 dark:border-slate-800 transition-colors">TUTUP</button>
+                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 dark:border-rose-900/30 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIG TARGET IMPIAN */}
       {isTargetModalOpen && (
          <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay">
-           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content">
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs">
              <button onClick={() => setIsTargetModalOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
-             <h3 className="text-base md:text-lg font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Config Target</h3>
-             <form onSubmit={handleTargetSubmit} className="space-y-4 text-xs font-mono">
+             <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Config Target</h3>
+             <form onSubmit={handleTargetSubmit} className="space-y-4">
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Nama Target</label>
-                  <input type="text" required placeholder="Contoh: Laptop Baru" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-sm" value={targetFormData.name} onChange={(e) => setTargetFormData({...targetFormData, name: e.target.value})} />
+                  <input type="text" required placeholder="Contoh: Laptop Baru" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:outline-none" value={targetFormData.name} onChange={(e) => setTargetFormData({...targetFormData, name: e.target.value})} />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Nilai Target (Rp)</label>
-                  <input type="number" required placeholder="Contoh: 15000000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-purple-600 dark:text-purple-400 font-bold text-sm" value={targetFormData.price} onChange={(e) => setTargetFormData({...targetFormData, price: e.target.value})} />
+                  <input type="number" required placeholder="Contoh: 15000000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-purple-600 dark:text-purple-400 font-bold text-sm focus:outline-none" value={targetFormData.price} onChange={(e) => setTargetFormData({...targetFormData, price: e.target.value})} />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setIsTargetModalOpen(false)} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 text-slate-600 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-sm">BATAL</button>
-                  <button type="submit" className="w-1/2 p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-sm">UPDATE</button>
+                  <button type="button" onClick={() => setIsTargetModalOpen(false)} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 text-slate-600 border border-slate-200 dark:border-slate-800 rounded-xl font-bold">BATAL</button>
+                  <button type="submit" className="w-1/2 p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold">UPDATE</button>
                 </div>
              </form>
            </div>
