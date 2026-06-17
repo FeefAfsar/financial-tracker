@@ -4,16 +4,13 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { createClient } from '@supabase/supabase-js';
 
 // ======================= CONFIGURATION BLOCK =======================
-// 1. DATABASE CLOUD CONFIG (SUPABASE)
 const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 2. OTAK INTELLIGENCE CONFIG (GOOGLE GEMINI AI)
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 // ===================================================================
 
-// Helper function untuk mengonversi berkas gambar struk menjadi format teks Base64 agar dapat dibaca oleh Gemini AI
 const fileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -72,6 +69,10 @@ function App() {
 
   const fetchTransactions = async () => {
     setIsLoading(true);
+    if (!SUPABASE_ANON_KEY) {
+      setIsLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
@@ -188,23 +189,18 @@ function App() {
     setIsTargetModalOpen(false);
   };
 
-  // ==================== OPERASI UTAMA REST API GOOGLE GEMINI AI ====================
   const handleScanReceipt = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('MASUKKAN_API_KEY_GEMINI')) {
-      alert('⚠️ Hubungkan terlebih dahulu API Key Gemini valid kamu pada blok konfigurasi!');
+    if (!GEMINI_API_KEY) {
+      alert('⚠️ API Key Gemini belum terkonfigurasi di hosting cloud!');
       return;
     }
 
     setIsScanning(true);
-
     try {
-      // 1. Ekstrak data biner file menjadi string Base64 murni
       const base64Data = await fileToBase64(file);
-
-      // 2. Tembak REST API Endpoint Google Gemini secara native
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
@@ -213,26 +209,18 @@ function App() {
           body: JSON.stringify({
             contents: [{
               parts: [
-                { 
-                  text: `Kamu adalah sistem Fin-Core AI OCR. Analisis gambar struk belanja, nota, bukti transfer, atau bukti bayar QRIS ini. Ekstrak informasi total biaya (amount), kategori yang cocok (category), dan deskripsi singkat (description). Kamu WAJIB mengembalikan jawaban HANYA berbentuk format JSON bersih tanpa bungkus markdown/backticks. Skema format JSON yang wajib diikuti: { "amount": "angka_bulat_total_tanpa_titik_atau_rupiah", "category": "Pilih teks yang paling relevan dari daftar ini: Makanan, Kos, Kuliah, Shopping, atau Lainnya", "description": "Keterangan singkat barang/jasa yang dibeli, maksimal 5 kata" }` 
-                },
+                { text: `Kamu adalah sistem Fin-Core AI OCR. Analisis gambar struk belanja, nota, bukti transfer, atau bukti bayar QRIS ini. Ekstrak informasi total biaya (amount), kategori yang cocok (category), dan deskripsi singkat (description). Kamu WAJIB mengembalikan jawaban HANYA berbentuk format JSON bersih tanpa bungkus markdown/backticks. Skema format JSON yang wajib diikuti: { "amount": "angka_bulat_total_tanpa_titik_atau_rupiah", "category": "Pilih teks yang paling relevan dari daftar ini: Makanan, Kos, Kuliah, Shopping, atau Lainnya", "description": "Keterangan singkat barang/jasa yang dibeli, maksimal 5 kata" }` },
                 { inlineData: { mimeType: file.type, data: base64Data } }
               ]
             }],
-            generationConfig: {
-              responseMimeType: "application/json" // Memaksa respon model 100% berupa skema JSON murni
-            }
+            generationConfig: { responseMimeType: "application/json" }
           })
         }
       );
-
       const result = await response.json();
-      
-      // 3. Dekode teks respon JSON mentah dari Gemini
       const aiTextResult = result.candidates[0].content.parts[0].text;
       const parsedAiData = JSON.parse(aiTextResult);
 
-      // 4. Masukkan hasil analisis AI ke form state secara otomatis
       setFormData({
         ...formData,
         amount: parsedAiData.amount || '',
@@ -241,15 +229,13 @@ function App() {
         description: parsedAiData.description || 'Hasil Otomatis AI',
         date: new Date().toISOString().split('T')[0]
       });
-
     } catch (error) {
-      console.error('AI OCR Integration Failure:', error);
-      alert('Gagal memproses gambar. Pastikan resolusi kamera jelas dan teks struk terbaca!');
+      console.error('AI OCR Failure:', error);
+      alert('Gagal memproses gambar struk.');
     } finally {
       setIsScanning(false);
     }
   };
-  // =================================================================================
 
   const filteredTransactions = transactions.filter(t => {
     const matchesSearch = (t.description || t.category).toLowerCase().includes(searchQuery.toLowerCase());
@@ -259,16 +245,8 @@ function App() {
   const targetProgress = Math.min(Math.round((summary.balance / savingTarget.price) * 100), 100);
   const CHART_COLORS = ['#06b6d4', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#f43f5e'];
 
-  const animationStyles = `
-    @keyframes overlayShow { from { opacity: 0; backdrop-filter: blur(0px); } to { opacity: 1; backdrop-filter: blur(4px); } }
-    @keyframes contentShow { from { opacity: 0; transform: scale(0.95) translateY(15px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-    .anim-overlay { animation: overlayShow 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    .anim-content { animation: contentShow 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-  `;
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 pb-28 md:p-8 font-sans transition-colors duration-300 relative w-full max-w-[100vw] overflow-x-hidden">
-      <style>{animationStyles}</style>
       <div className="absolute top-0 left-0 w-full h-96 bg-purple-600/5 dark:bg-purple-600/10 rounded-full blur-3xl pointer-events-none transition-colors"></div>
 
       {/* HEADER */}
@@ -459,7 +437,6 @@ function App() {
               <button onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
               <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Log Fin-Core</h3>
               
-              {/* AI SCANNER ENGINE (SUDAH AKTIF GEMINI SECARA NYATA) */}
               <div className="mb-5 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-500/30 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Camera className="text-purple-600 dark:text-purple-400" size={16} />
@@ -499,18 +476,18 @@ function App() {
                 </div>
 
                 {showAddCategoryInput && (
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-850 flex gap-2 animate-content">
-                    <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-850 flex gap-2 animate-content">
+                    <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
                     <button type="button" onClick={handleAddCustomCategory} className="px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">ADD</button>
                   </div>
                 )}
 
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Deskripsi</label>
-                  <input type="text" placeholder="Rincian catatan..." className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
+                  <input type="text" placeholder="Rincian catatan..." className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-slate-800 dark:text-slate-300 text-sm" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={(e) => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
+                  <button type="button" onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 border-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold">BATAL</button>
                   <button type="submit" className="w-1/2 p-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold">SIMPAN LOG</button>
                 </div>
               </form>
@@ -521,12 +498,12 @@ function App() {
       {/* MODAL DETAIL POP-UP */}
       {selectedTxDetail && (
         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay" onClick={() => setSelectedTxDetail(null)}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setSelectedTxDetail(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
             <h3 className="text-sm font-black mb-5 text-slate-500 uppercase tracking-widest">Detail Transaksi</h3>
             
             <div className="space-y-4">
-              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 dark:border-slate-900 text-center">
+              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 border-slate-900 text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Mutasi</p>
                 <p className={`text-2xl font-black ${selectedTxDetail.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
                   {selectedTxDetail.type === 'income' ? '+' : '-'} Rp {parseFloat(selectedTxDetail.amount).toLocaleString('id-ID')}
@@ -534,31 +511,31 @@ function App() {
               </div>
 
               <div className="space-y-2.5 px-1">
-                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Layers size={14} /> Arus Data</span>
                   <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>
                     {selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}
                   </span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Tag size={14} /> Kategori</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200 capitalize">{selectedTxDetail.category}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 dark:border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Calendar size={14} /> Tanggal</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{selectedTxDetail.date}</span>
                 </div>
                 <div className="pt-1">
                   <span className="text-slate-400 font-bold block mb-1">Rincian Deskripsi:</span>
-                  <p className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-800 dark:text-slate-300 font-sans text-sm leading-relaxed border border-slate-100 dark:border-slate-900 break-words">
+                  <p className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-800 dark:text-slate-300 font-sans text-sm leading-relaxed border border-slate-100 border-slate-900 break-words">
                     {selectedTxDetail.description || <span className="italic text-xs text-slate-400 font-mono">Tidak ada keterangan deskripsi</span>}
                   </p>
                 </div>
               </div>
 
               <div className="pt-3 flex gap-2">
-                <button onClick={() => setSelectedTxDetail(null)} className="w-2/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 dark:border-slate-800 transition-colors">TUTUP</button>
-                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 dark:border-rose-900/30 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
+                <button onClick={() => setSelectedTxDetail(null)} className="w-2/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 border-slate-800 transition-colors">TUTUP</button>
+                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 border-rose-900/30 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
               </div>
             </div>
           </div>
@@ -568,20 +545,20 @@ function App() {
       {/* CONFIG TARGET IMPIAN */}
       {isTargetModalOpen && (
          <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay">
-           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs">
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs">
              <button onClick={() => setIsTargetModalOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
              <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Config Target</h3>
              <form onSubmit={handleTargetSubmit} className="space-y-4">
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Nama Target</label>
-                  <input type="text" required placeholder="Contoh: Laptop Baru" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:outline-none" value={targetFormData.name} onChange={(e) => setTargetFormData({...targetFormData, name: e.target.value})} />
+                  <input type="text" required placeholder="Contoh: Laptop Baru" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:outline-none" value={targetFormData.name} onChange={(e) => setTargetFormData({...targetFormData, name: e.target.value})} />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Nilai Target (Rp)</label>
-                  <input type="number" required placeholder="Contoh: 15000000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-purple-600 dark:text-purple-400 font-bold text-sm focus:outline-none" value={targetFormData.price} onChange={(e) => setTargetFormData({...targetFormData, price: e.target.value})} />
+                  <input type="number" required placeholder="Contoh: 15000000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-purple-600 dark:text-purple-400 font-bold text-sm focus:outline-none" value={targetFormData.price} onChange={(e) => setTargetFormData({...targetFormData, price: e.target.value})} />
                 </div>
                 <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setIsTargetModalOpen(false)} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 text-slate-600 border border-slate-200 dark:border-slate-800 rounded-xl font-bold">BATAL</button>
+                  <button type="button" onClick={() => setIsTargetModalOpen(false)} className="w-1/2 p-3 bg-slate-100 dark:bg-slate-950 text-slate-600 border border-slate-200 border-slate-800 rounded-xl font-bold">BATAL</button>
                   <button type="submit" className="w-1/2 p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold">UPDATE</button>
                 </div>
              </form>
