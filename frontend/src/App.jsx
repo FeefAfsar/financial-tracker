@@ -1,30 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Wallet, ArrowUpRight, ArrowDownRight, X, Trash2, Search, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon, Tag, Calendar, Layers } from 'lucide-react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-import { createClient } from '@supabase/supabase-js';
+import { Plus, Wallet, X, Trash2, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon, Tag, Calendar, Layers, Download } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-// ======================= CONFIGURATION BLOCK =======================
-const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY; 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-// ===================================================================
-
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = (error) => reject(error);
-  });
-};
+// IMPORT MODUL EKSTERNAL YANG SUDAH DIPICAH
+import { supabase } from './lib/supabaseClient';
+import { scanReceiptWithGemini } from './services/geminiService';
+import { downloadTransactionsAsCSV } from './utils/csvExporter';
 
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
-  
+  const [prediction, setPrediction] = useState({ runwayDays: '∞', targetDays: 'Calculating...', statusMessage: 'Mengumpulkan data...' });
   const [activePieIndex, setActivePieIndex] = useState(-1);
 
   const [categories, setCategories] = useState(() => {
@@ -33,9 +20,7 @@ function App() {
   });
   const [showAddCategoryInput, setShowAddCategoryInput] = useState(false);
   const [customCategoryName, setCustomCategoryName] = useState('');
-
   const [selectedTxDetail, setSelectedTxDetail] = useState(null);
-
   const [savingTarget, setSavingTarget] = useState(() => {
     const saved = localStorage.getItem('afif_saving_target');
     return saved ? JSON.parse(saved) : { name: 'Make Over Kamar', price: 2000000 };
@@ -53,7 +38,6 @@ function App() {
 
   useEffect(() => {
     document.title = "Fin-Core Afif's";
-    
     const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
     link.type = 'image/svg+xml';
     link.rel = 'shortcut icon';
@@ -69,10 +53,6 @@ function App() {
 
   const fetchTransactions = async () => {
     setIsLoading(true);
-    if (!SUPABASE_ANON_KEY) {
-      setIsLoading(false);
-      return;
-    }
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
@@ -88,7 +68,7 @@ function App() {
 
   useEffect(() => {
     calculateSummary(transactions);
-  }, [transactions]);
+  }, [transactions, savingTarget]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -123,6 +103,38 @@ function App() {
 
     const burnRate = totalIncome > 0 ? Math.min(Math.round((totalExpense / totalIncome) * 100), 100) : 0;
     setSummary({ balance, total_income: totalIncome, total_expense: totalExpense, category_expenses: categoryExpenses, top_category: topCategory, burn_rate: burnRate });
+
+    const uniqueDates = [...new Set(allTransactions.map(t => t.date))];
+    const totalDaysSpan = Math.max(1, uniqueDates.length);
+    const expenseTx = allTransactions.filter(t => t.type === 'expense');
+    const uniqueExpenseDatesCount = [...new Set(expenseTx.map(t => t.date))].length || 1;
+    const avgDailyExpense = totalExpense / uniqueExpenseDatesCount;
+    
+    let runwayDays = 'Aman (∞)';
+    let statusMessage = 'Arus keuangan sehat. Saldo inti stabil.';
+
+    if (balance <= 0) {
+      runwayDays = '0 hari';
+      statusMessage = '⚠️ Saldo kritis! Segera lakukan suntikan dana pemasukan.';
+    } else if (avgDailyExpense > 0) {
+      const calculatedDays = Math.floor(balance / avgDailyExpense);
+      runwayDays = `${calculatedDays} hari`;
+      statusMessage = `Berdasarkan tren jajan harianmu, saldo diprediksi aman hingga ${calculatedDays} hari ke depan.`;
+    }
+
+    const remainingTargetAmount = savingTarget.price - balance;
+    const avgDailyNetSavings = (totalIncome - totalExpense) / totalDaysSpan;
+    
+    let targetDays = 'Butuh surplus tabungan';
+    if (remainingTargetAmount <= 0) {
+      targetDays = 'Target Tercapai! 🎉';
+    } else if (avgDailyNetSavings > 0) {
+      const estimatedDays = Math.ceil(remainingTargetAmount / avgDailyNetSavings);
+      targetDays = `${estimatedDays} hari lagi`;
+    } else {
+      targetDays = 'Cashflow minus, kurangi pengeluaran!';
+    }
+    setPrediction({ runwayDays, targetDays, statusMessage });
   };
 
   const handleAddCustomCategory = (e) => {
@@ -193,34 +205,9 @@ function App() {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!GEMINI_API_KEY) {
-      alert('⚠️ API Key Gemini belum terkonfigurasi di hosting cloud!');
-      return;
-    }
-
     setIsScanning(true);
     try {
-      const base64Data = await fileToBase64(file);
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: `Kamu adalah sistem Fin-Core AI OCR. Analisis gambar struk belanja, nota, bukti transfer, atau bukti bayar QRIS ini. Ekstrak informasi total biaya (amount), kategori yang cocok (category), dan deskripsi singkat (description). Kamu WAJIB mengembalikan jawaban HANYA berbentuk format JSON bersih tanpa bungkus markdown/backticks. Skema format JSON yang wajib diikuti: { "amount": "angka_bulat_total_tanpa_titik_atau_rupiah", "category": "Pilih teks yang paling relevan dari daftar ini: Makanan, Kos, Kuliah, Shopping, atau Lainnya", "description": "Keterangan singkat barang/jasa yang dibeli, maksimal 5 kata" }` },
-                { inlineData: { mimeType: file.type, data: base64Data } }
-              ]
-            }],
-            generationConfig: { responseMimeType: "application/json" }
-          })
-        }
-      );
-      const result = await response.json();
-      const aiTextResult = result.candidates[0].content.parts[0].text;
-      const parsedAiData = JSON.parse(aiTextResult);
-
+      const parsedAiData = await scanReceiptWithGemini(file, categories);
       setFormData({
         ...formData,
         amount: parsedAiData.amount || '',
@@ -230,8 +217,8 @@ function App() {
         date: new Date().toISOString().split('T')[0]
       });
     } catch (error) {
-      console.error('AI OCR Failure:', error);
-      alert('Gagal memproses gambar struk.');
+      console.error('UI Scan Error:', error);
+      alert(error.message || 'Gagal memproses gambar struk.');
     } finally {
       setIsScanning(false);
     }
@@ -262,7 +249,6 @@ function App() {
           </div>
           <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 tracking-widest mt-1 uppercase font-mono font-medium">Predictive Finance</p>
         </div>
-
         <button onClick={toggleTheme} className="p-3 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors shrink-0 shadow-sm">
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
@@ -278,75 +264,69 @@ function App() {
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
           {/* TOP CARDS */}
           <div className="md:col-span-3 grid grid-cols-1 gap-4 w-full">
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex items-center justify-between w-full">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex items-center justify-between w-full">
               <div className="truncate pr-2">
                 <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-1">Core Balance</p>
                 <h3 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-blue-600 dark:from-cyan-400 dark:to-blue-400 truncate">
                   Rp {summary.balance.toLocaleString('id-ID')}
                 </h3>
               </div>
-              <div className="bg-cyan-50 dark:bg-cyan-950/60 p-4 rounded-xl border border-cyan-200 dark:border-cyan-500/20 text-cyan-600 dark:text-cyan-400 shrink-0"><Wallet size={28} /></div>
+              <div className="bg-cyan-50 dark:bg-cyan-950/60 p-4 rounded-xl border border-cyan-200 border-cyan-500/20 text-cyan-600 dark:text-cyan-400 shrink-0"><Wallet size={28} /></div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 w-full">
-              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col w-full">
+              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex flex-col w-full">
                 <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-2">Inflow Stream</p>
                 <h3 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 truncate">
                   Rp {summary.total_income.toLocaleString('id-ID')}
                 </h3>
               </div>
-              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col w-full">
+              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex flex-col w-full">
                 <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-2">Outflow Burn</p>
                 <h3 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-rose-600 dark:from-pink-400 dark:to-rose-400 truncate">
                   Rp {summary.total_expense.toLocaleString('id-ID')}
                 </h3>
               </div>
             </div>
+
+            {/* RUNWAY PREDICTOR BANNER */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-transparent border border-cyan-500/20 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs transition-all">
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 font-black tracking-wider uppercase mb-1">
+                  <TrendingUp size={14} /> Fin-Core Runway Engine
+                </div>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed font-sans">{prediction.statusMessage}</p>
+              </div>
+              <div className="bg-slate-900/5 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/5 text-center sm:text-right shrink-0 min-w-[120px]">
+                <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Sisa Runway</p>
+                <p className="text-lg font-black text-cyan-600 dark:text-cyan-400">{prediction.runwayDays}</p>
+              </div>
+            </div>
           </div>
 
           {/* CHART WIDGET */}
-          <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
+          <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
               <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Proporsi Alokasi</h4>
             </div>
-            
             <div className="h-52 w-full flex items-center justify-center relative my-1">
               {summary.category_expenses.length > 0 ? (
                 <>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie 
-                        data={summary.category_expenses} 
-                        dataKey="total" 
-                        nameKey="category" 
-                        cx="50%" 
-                        cy="50%" 
-                        innerRadius={50} 
-                        outerRadius={65} 
-                        paddingAngle={4}
-                        label={({ category }) => `${category}`} 
-                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }}
-                        onMouseEnter={(_, index) => setActivePieIndex(index)}
-                        onMouseLeave={() => setActivePieIndex(-1)}
-                        onClick={(_, index) => setActivePieIndex(activePieIndex === index ? -1 : index)}
-                      >
+                      <Pie data={summary.category_expenses} dataKey="total" nameKey="category" cx="50%" cy="50%" innerRadius={50} outerRadius={65} paddingAngle={4} label={({ category }) => `${category}`} labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }} onMouseEnter={(_, index) => setActivePieIndex(index)} onMouseLeave={() => setActivePieIndex(-1)} onClick={(_, index) => setActivePieIndex(activePieIndex === index ? -1 : index)}>
                         {summary.category_expenses.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
-                  
                   <div className="absolute flex flex-col items-center pointer-events-none text-center px-2 max-w-[90px]">
                     {activePieIndex !== -1 && summary.category_expenses[activePieIndex] ? (
                       <>
-                        <p className="text-[10px] font-black text-cyan-500 dark:text-cyan-400 uppercase truncate max-w-full">
-                          {summary.category_expenses[activePieIndex].category}
-                        </p>
-                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 tracking-tight">
-                          Rp {Math.round(summary.category_expenses[activePieIndex].total).toLocaleString('id-ID')}
-                        </p>
+                        <p className="text-[10px] font-black text-cyan-500 dark:text-cyan-400 uppercase truncate max-w-full">{summary.category_expenses[activePieIndex].category}</p>
+                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5 tracking-tight">Rp {Math.round(summary.category_expenses[activePieIndex].total).toLocaleString('id-ID')}</p>
                       </>
                     ) : (
                       <>
@@ -360,8 +340,7 @@ function App() {
                 <p className="text-xs text-slate-400 italic font-mono">Belum ada data pengeluaran</p>
               )}
             </div>
-            
-            <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-850 text-center flex flex-col justify-center">
+            <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 border-slate-100 text-center flex flex-col justify-center">
                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-1">Pengeluaran Terbesar</p>
                <p className="text-sm font-black text-cyan-600 dark:text-cyan-400 capitalize truncate px-1">{summary.top_category}</p>
             </div>
@@ -369,39 +348,48 @@ function App() {
 
           {/* TARGET & LOGS */}
           <div className="md:col-span-2 grid grid-cols-1 gap-5">
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
                   <div className="text-purple-600 dark:text-purple-400 p-2 bg-purple-50 dark:bg-purple-950/50 rounded-xl"><Target size={18} /></div>
                   <h4 className="font-bold text-sm md:text-base text-slate-800 dark:text-slate-200">Target Akumulasi</h4>
                 </div>
-                <button onClick={() => setIsTargetModalOpen(true)} className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold rounded-lg border border-purple-200 dark:border-purple-500/30">
-                  CONFIG
-                </button>
+                <button onClick={() => setIsTargetModalOpen(true)} className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold rounded-lg border border-purple-200 border-purple-500/30">CONFIG</button>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-850 w-full">
+              <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 border-slate-100 w-full">
                 <div className="flex justify-between mb-3 gap-2">
                   <p className="text-xs md:text-sm font-black text-slate-800 dark:text-slate-100 truncate">{savingTarget.name}</p>
                   <p className="text-xs md:text-sm font-bold text-purple-600 dark:text-purple-400 shrink-0">Rp {savingTarget.price.toLocaleString('id-ID')}</p>
                 </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-3 border border-slate-300 dark:border-slate-800 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-3 border border-slate-300 border-slate-800 overflow-hidden">
                   <div className="bg-gradient-to-r from-cyan-500 to-purple-500 h-full rounded-full" style={{ width: `${targetProgress}%` }}></div>
+                </div>
+                <div className="mt-3 flex justify-between items-center text-[10px] font-mono border-t border-slate-200/50 dark:border-slate-800/60 pt-2.5">
+                  <span className="text-slate-400 font-bold">ESTIMASI TIMELINE ACCUMULATION:</span>
+                  <span className="text-purple-600 dark:text-purple-400 font-black tracking-wider uppercase bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded">{prediction.targetDays}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg">
               <div className="flex flex-col sm:flex-row gap-3 w-full mb-4">
-                <input type="text" placeholder="Cari log catatan..." className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs md:text-sm rounded-xl focus:outline-none w-full font-mono text-slate-800 dark:text-slate-300" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <div className="flex bg-slate-50 dark:bg-slate-950 p-1.5 rounded-xl border border-slate-200 dark:border-slate-850 text-[10px] md:text-xs font-mono font-bold w-full sm:w-auto transition-colors shrink-0">
-                  <button onClick={() => setFilterType('all')} className={`px-4 py-2 rounded-lg ${filterType === 'all' ? 'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 shadow-sm' : 'text-slate-500'}`}>ALL</button>
-                  <button onClick={() => setFilterType('income')} className={`px-4 py-2 rounded-lg ${filterType === 'income' ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'text-slate-500'}`}>IN</button>
-                  <button onClick={() => setFilterType('expense')} className={`px-4 py-2 rounded-lg ${filterType === 'expense' ? 'bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-400 shadow-sm' : 'text-slate-500'}`}>OUT</button>
+                <div className="relative flex-1">
+                  <input type="text" placeholder="Cari log catatan..." className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 border-slate-800 text-xs md:text-sm rounded-xl focus:outline-none w-full font-mono text-slate-800 dark:text-slate-300" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex bg-slate-50 dark:bg-slate-950 p-1.5 rounded-xl border border-slate-200 border-slate-100 text-[10px] md:text-xs font-mono font-bold transition-colors">
+                    <button onClick={() => setFilterType('all')} className={`px-3 py-1.5 rounded-lg ${filterType === 'all' ? 'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 shadow-sm' : 'text-slate-500'}`}>ALL</button>
+                    <button onClick={() => setFilterType('income')} className={`px-3 py-1.5 rounded-lg ${filterType === 'income' ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'text-slate-500'}`}>IN</button>
+                    <button onClick={() => setFilterType('expense')} className={`px-3 py-1.5 rounded-lg ${filterType === 'expense' ? 'bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-400 shadow-sm' : 'text-slate-500'}`}>OUT</button>
+                  </div>
+                  <button onClick={() => downloadTransactionsAsCSV(transactions)} title="Download data untuk Python Analytics (.csv)" className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 border-slate-100 rounded-xl text-slate-600 dark:text-slate-400 hover:text-cyan-500 dark:hover:text-cyan-400 hover:border-cyan-200 dark:hover:border-cyan-900/50 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 font-mono text-xs font-bold">
+                    <Download size={15} /> <span className="hidden sm:inline">EXPORT</span>
+                  </button>
                 </div>
               </div>
               <div className="space-y-3 w-full max-h-64 overflow-y-auto pr-2 custom-scrollbar">
                 {filteredTransactions.map((t) => (
-                  <div key={t.id} onClick={() => setSelectedTxDetail(t)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
+                  <div key={t.id} onClick={() => setSelectedTxDetail(t)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-cyan-500 transition-colors">{t.description || t.category}</p>
                       <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">{t.date} • <span className="text-purple-500 dark:text-purple-400 font-bold uppercase">{t.category}</span></p>
@@ -432,12 +420,11 @@ function App() {
 
       {/* MODAL INPUT TRANSAKSI */}
       {isModalOpen && (
-         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay">
-           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content">
+         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full">
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors">
               <button onClick={() => { setIsModalOpen(false); setShowAddCategoryInput(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
               <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Log Fin-Core</h3>
-              
-              <div className="mb-5 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-500/30 rounded-xl flex items-center justify-between">
+              <div className="mb-5 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 border-purple-500/30 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Camera className="text-purple-600 dark:text-purple-400" size={16} />
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Auto-Fill by Gemini 1.5 Flash</span>
@@ -452,31 +439,30 @@ function App() {
               <form onSubmit={handleSubmit} className="space-y-4 text-xs font-mono">
                 <div>
                   <label className="block font-bold text-slate-500 uppercase mb-2">Nominal Uang (Rp)</label>
-                  <input type="number" required placeholder="Contoh: 50000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-cyan-600 dark:text-cyan-400 font-bold text-sm" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
+                  <input type="number" required placeholder="Contoh: 50000" className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-cyan-600 dark:text-cyan-400 font-bold text-sm" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                    <div>
                      <label className="block font-bold text-slate-500 uppercase mb-2">Arus Data</label>
-                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}>
+                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}>
                        <option value="expense">OUTFLOW</option><option value="income">INFLOW</option>
                      </select>
                    </div>
                    <div>
                      <label className="block font-bold text-slate-500 uppercase mb-2">Kategori</label>
-                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
+                     <select className="w-full p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-800 text-slate-800 dark:text-slate-300 text-sm focus:outline-none" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})}>
                        {categories.map(cat => (
                          <option key={cat} value={cat}>{cat}</option>
                        ))}
                      </select>
-                     
-                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 dark:border-cyan-800/40 text-cyan-600 dark:text-cyan-400'}`}>
+                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 border-cyan-100 text-cyan-600 dark:text-cyan-400'}`}>
                        {showAddCategoryInput ? '✕ BATAL KATEGORI' : '+ TAMBAH KATEGORI'}
                      </button>
                    </div>
                 </div>
 
                 {showAddCategoryInput && (
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-850 flex gap-2 animate-content">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-100 flex gap-2">
                     <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
                     <button type="button" onClick={handleAddCustomCategory} className="px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">ADD</button>
                   </div>
@@ -497,11 +483,10 @@ function App() {
 
       {/* MODAL DETAIL POP-UP */}
       {selectedTxDetail && (
-        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay" onClick={() => setSelectedTxDetail(null)}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full" onClick={() => setSelectedTxDetail(null)}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setSelectedTxDetail(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
             <h3 className="text-sm font-black mb-5 text-slate-500 uppercase tracking-widest">Detail Transaksi</h3>
-            
             <div className="space-y-4">
               <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 border-slate-900 text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Mutasi</p>
@@ -509,19 +494,16 @@ function App() {
                   {selectedTxDetail.type === 'income' ? '+' : '-'} Rp {parseFloat(selectedTxDetail.amount).toLocaleString('id-ID')}
                 </p>
               </div>
-
               <div className="space-y-2.5 px-1">
-                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Layers size={14} /> Arus Data</span>
-                  <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>
-                    {selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}
-                  </span>
+                  <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>{selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Tag size={14} /> Kategori</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200 capitalize">{selectedTxDetail.category}</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 border-slate-850 pb-2">
+                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
                   <span className="text-slate-400 font-bold flex items-center gap-1.5"><Calendar size={14} /> Tanggal</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">{selectedTxDetail.date}</span>
                 </div>
@@ -532,10 +514,9 @@ function App() {
                   </p>
                 </div>
               </div>
-
               <div className="pt-3 flex gap-2">
                 <button onClick={() => setSelectedTxDetail(null)} className="w-2/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 border-slate-800 transition-colors">TUTUP</button>
-                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 border-rose-900/30 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
+                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 border-rose-100 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
               </div>
             </div>
           </div>
@@ -544,8 +525,8 @@ function App() {
 
       {/* CONFIG TARGET IMPIAN */}
       {isTargetModalOpen && (
-         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay">
-           <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs">
+         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full">
+           <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-[90vw] sm:max-w-md rounded-2xl p-6 relative shadow-2xl transition-colors font-mono text-xs">
              <button onClick={() => setIsTargetModalOpen(false)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X size={20} /></button>
              <h3 className="text-base font-mono font-black mb-6 text-slate-800 dark:text-slate-200">Config Target</h3>
              <form onSubmit={handleTargetSubmit} className="space-y-4">
