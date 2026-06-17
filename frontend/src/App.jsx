@@ -16,8 +16,15 @@ import { InputModal, DetailModal, TargetModal } from './components/Modals';
 function App() {
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
-  const [prediction, setPrediction] = useState({ runwayDays: '∞', targetDays: 'Calculating...', statusMessage: 'Mengumpulkan data...' });
+  const [summary, setSummary] = useState({ balance: 0, 
+                                           total_income: 0, 
+                                           total_expense: 0, 
+                                           category_expenses: [], 
+                                           top_category: 'Belum Ada', 
+                                           burn_rate: 0 });
+  const [prediction, setPrediction] = useState({ runwayDays: '∞', 
+                                                 targetDays: 'Calculating...', 
+                                                 statusMessage: 'Mengumpulkan data...' });
   const [activePieIndex, setActivePieIndex] = useState(-1);
 
   const [categories, setCategories] = useState(() => {
@@ -172,14 +179,23 @@ function App() {
   const targetProgress = Math.min(Math.round((summary.balance / savingTarget.price) * 100), 100);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 pb-28 md:p-8 font-sans transition-colors duration-300 relative w-full max-w-[100vw] overflow-x-hidden">
-      <div className="absolute top-0 left-0 w-full h-96 bg-purple-600/5 dark:bg-purple-600/10 rounded-full blur-3xl pointer-events-none transition-colors"></div>
+    <div 
+      className="min-h-screen bg-zinc-50 dark:bg-neutral-950 text-zinc-900 dark:text-zinc-100 p-4 pb-28 md:p-8 transition-colors duration-300 relative w-full max-w-[100vw] overflow-x-hidden"
+      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+    >
+      {/* Injeksi Google Font Plus Jakarta Sans secara dinamis */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+      `}</style>
+      
+      <div className="absolute top-0 left-0 w-full h-96 bg-emerald-500/5 dark:bg-emerald-500/5 rounded-full blur-3xl pointer-events-none transition-colors"></div>
 
       <Header theme={theme} toggleTheme={toggleTheme} />
 
       {isLoading ? (
-        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-slate-400 font-mono text-sm gap-3">
-          <Loader2 className="animate-spin text-cyan-500" size={32} />
+        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-zinc-400 font-mono text-sm gap-3">
+          <Loader2 className="animate-spin text-emerald-500" size={32} />
           <span>CONNECTING TO FIN-CORE CLOUD DATABASE...</span>
         </div>
       ) : (
@@ -193,7 +209,7 @@ function App() {
         </main>
       )}
 
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 bg-gradient-to-r from-cyan-500 to-purple-500 text-white p-4 rounded-full shadow-xl z-50 hover:scale-110 active:scale-95 transition-transform"><Plus size={28} /></button>
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 bg-emerald-600 dark:bg-emerald-500 text-white p-4 rounded-full shadow-xl z-50 hover:scale-110 active:scale-95 transition-transform"><Plus size={28} /></button>
 
       <InputModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} formData={formData} setFormData={setFormData} handleSubmit={handleSubmit} handleScanReceipt={handleScanReceipt} isScanning={isScanning} categories={categories} showAddCategoryInput={showAddCategoryInput} setShowAddCategoryInput={setShowAddCategoryInput} customCategoryName={customCategoryName} setCustomCategoryName={setCustomCategoryName} handleAddCustomCategory={handleAddCustomCategory} />
       <DetailModal selectedTxDetail={selectedTxDetail} onClose={() => { setSelectedTxDetail(null); setIsEditMode(false); }} isEditMode={isEditMode} setIsEditMode={setIsEditMode} editFormData={editFormData} setEditFormData={setEditFormData} handleEditSubmit={handleEditSubmit} categories={categories} handleDelete={handleDelete} />
