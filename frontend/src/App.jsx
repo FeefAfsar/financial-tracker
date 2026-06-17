@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // ======================= CONFIGURATION BLOCK =======================
 const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
-const SUPABASE_ANON_KEY = 'TEMPELKAN_ANON_KEY_SUPABASE_KAMU_DI_SINI'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aWV0cWhxYWptZ2d1Y3pjZGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDE3MzYsImV4cCI6MjA5NzI3NzczNn0._lKMrJ2aQIaYHU0XJbVt5XbS5AdR4bKxpchCiutAmyc'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ===================================================================
 
@@ -14,7 +14,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
   
-  // State untuk daftar kategori dinamis
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('afif_categories');
     return saved ? JSON.parse(saved) : ['Makanan', 'Kos', 'Kuliah', 'Shopping', 'Lainnya'];
@@ -22,7 +21,6 @@ function App() {
   const [showAddCategoryInput, setShowAddCategoryInput] = useState(false);
   const [customCategoryName, setCustomCategoryName] = useState('');
 
-  // State baru untuk modal detail transaksi saat baris log diklik
   const [selectedTxDetail, setSelectedTxDetail] = useState(null);
 
   const [savingTarget, setSavingTarget] = useState(() => {
@@ -40,11 +38,9 @@ function App() {
   const [formData, setFormData] = useState({ amount: '', type: 'expense', category: 'Makanan', description: '', date: new Date().toISOString().split('T')[0] });
   const [targetFormData, setTargetFormData] = useState({ name: savingTarget.name, price: savingTarget.price });
 
-  // PENTING: Mengubah Title Browser & Injeksi Logo Kustom Otomatis
   useEffect(() => {
     document.title = "Fin-Core Afif's";
     
-    // Injeksi Favicon Kustom (Mengganti Logo default bawaan)
     const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
     link.type = 'image/svg+xml';
     link.rel = 'shortcut icon';
@@ -54,7 +50,6 @@ function App() {
     fetchTransactions();
   }, []);
 
-  // Simpan Kategori Baru ke LocalStorage biar awet
   useEffect(() => {
     localStorage.setItem('afif_categories', JSON.stringify(categories));
   }, [categories]);
@@ -155,7 +150,7 @@ function App() {
   };
 
   const handleDelete = async (id, e) => {
-    e.stopPropagation(); // Mencegah modal pop-up terbuka ketika menekan tombol hapus
+    e.stopPropagation();
     if (window.confirm("Hapus log transaksi ini dari database cloud?")) {
       const { error } = await supabase
         .from('transactions')
@@ -177,7 +172,6 @@ function App() {
     setIsTargetModalOpen(false);
   };
 
-  // Simulasi AI Scanner Layout
   const handleScanReceipt = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -238,7 +232,7 @@ function App() {
       {isLoading ? (
         <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 text-slate-400 font-mono text-sm gap-3">
           <Loader2 className="animate-spin text-cyan-500" size={32} />
-          <span>CONNECTING TO FIN-CORE CLOUD DATABASE...</span>
+          <span>CONNECTING TO FIN-CORE CLABASE...</span>
         </div>
       ) : (
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
@@ -270,7 +264,7 @@ function App() {
             </div>
           </div>
 
-          {/* CHART WIDGET (SUDAH DIPERBAIKI SUPAYA TEKS DI LUAR KETIKA DI-HOVER/KLIK) */}
+          {/* CHART WIDGET */}
           <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
@@ -289,10 +283,10 @@ function App() {
                         cx="50%" 
                         cy="50%" 
                         innerRadius={50} 
-                        outerRadius={68} 
+                        outerRadius={65} 
                         paddingAngle={4}
-                        label={({ category }) => `${category}`} // Melempar teks label otomatis ke luar lingkaran
-                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }} // Garis petunjuk
+                        label={({ category }) => `${category}`} 
+                        labelLine={{ strokeWidth: 1, stroke: theme === 'dark' ? '#475569' : '#cbd5e1' }} 
                       >
                         {summary.category_expenses.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -304,7 +298,6 @@ function App() {
                       />
                     </PieChart>
                   </ResponsiveContainer>
-                  {/* Bagian Tengah Murni Bersih Hanya untuk Burn Rate Utama */}
                   <div className="absolute flex flex-col items-center pointer-events-none">
                     <p className="text-[9px] text-slate-400 font-bold uppercase font-mono tracking-wider">Burn Rate</p>
                     <p className="text-xl font-black text-slate-800 dark:text-white">{summary.burn_rate}%</p>
@@ -355,7 +348,6 @@ function App() {
               </div>
               <div className="space-y-3 w-full max-h-64 overflow-y-auto pr-2 custom-scrollbar">
                 {filteredTransactions.map((t) => (
-                  // Menambahkan Event onClick untuk membuka modal pop-up detail rincian transaksi
                   <div key={t.id} onClick={() => setSelectedTxDetail(t)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-cyan-500 transition-colors">{t.description || t.category}</p>
@@ -423,18 +415,19 @@ function App() {
                          <option key={cat} value={cat}>{cat}</option>
                        ))}
                      </select>
-                     {/* Tombol pemicu tambah kategori baru secara fleksibel */}
-                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className="text-[10px] text-cyan-500 hover:text-cyan-400 font-bold mt-1 block transition-colors">
-                       {showAddCategoryInput ? '✕ Batal' : '+ Tambah Kategori Baru'}
+                     
+                     {/* 📱 TOMBOL BARU: Jauh lebih tebal, empuk, berukuran balok pas, dan aman dari salah klik jempol di HP */}
+                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 dark:border-cyan-800/40 text-cyan-600 dark:text-cyan-400'}`}>
+                       {showAddCategoryInput ? '✕ BATAL KATEGORI' : '+ TAMBAH KATEGORI'}
                      </button>
                    </div>
                 </div>
 
-                {/* Input text tambahan jika user ingin membuat kategori kustom sendiri */}
+                {/* Input kategori baru */}
                 {showAddCategoryInput && (
                   <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-850 flex gap-2 animate-content">
-                    <input type="text" placeholder="Nama kategori baru..." className="w-full p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
-                    <button type="button" onClick={handleAddCustomCategory} className="px-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">TAMBAH</button>
+                    <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
+                    <button type="button" onClick={handleAddCustomCategory} className="px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">ADD</button>
                   </div>
                 )}
 
@@ -451,10 +444,10 @@ function App() {
          </div>
       )}
 
-      {/* MODAL BARU: DETAIL POP-UP RINCIAN TRANSAKSI */}
+      {/* MODAL DETAIL POP-UP */}
       {selectedTxDetail && (
         <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full anim-overlay" onClick={() => setSelectedTxDetail(null)}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl p-6 md:p-7 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors anim-content font-mono text-xs" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setSelectedTxDetail(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
             <h3 className="text-sm font-black mb-5 text-slate-500 uppercase tracking-widest">Detail Transaksi</h3>
             
