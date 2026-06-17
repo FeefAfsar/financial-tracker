@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Wallet, X, Trash2, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon, Tag, Calendar, Layers, Download } from 'lucide-react';
+import { Plus, Wallet, X, Trash2, Target, Sparkles, TrendingUp, Sun, Moon, Camera, UploadCloud, Loader2, PieChart as PieChartIcon, Tag, Calendar, Layers, Download, Edit3 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-// IMPORT MODUL EKSTERNAL YANG SUDAH DIPICAH
+// IMPORT MODUL EKSTERNAL YANG SUDAH DIPISAH
 import { supabase } from './lib/supabaseClient';
 import { scanReceiptWithGemini } from './services/geminiService';
 import { downloadTransactionsAsCSV } from './utils/csvExporter';
@@ -20,7 +20,12 @@ function App() {
   });
   const [showAddCategoryInput, setShowAddCategoryInput] = useState(false);
   const [customCategoryName, setCustomCategoryName] = useState('');
+  
+  // State Utama Manajemen Detail & Mode Edit Transaksi
   const [selectedTxDetail, setSelectedTxDetail] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState({ amount: '', type: 'expense', category: 'Makanan', description: '', date: '' });
+
   const [savingTarget, setSavingTarget] = useState(() => {
     const saved = localStorage.getItem('afif_saving_target');
     return saved ? JSON.parse(saved) : { name: 'Make Over Kamar', price: 2000000 };
@@ -178,6 +183,45 @@ function App() {
     }
   };
 
+  // ==================== LOGIKA UTAMA EDIT/UPDATE DATABASE CLOUD ====================
+  const handleStartEdit = () => {
+    setEditFormData({
+      amount: selectedTxDetail.amount,
+      type: selectedTxDetail.type,
+      category: selectedTxDetail.category,
+      description: selectedTxDetail.description || '',
+      date: selectedTxDetail.date
+    });
+    setIsEditMode(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    const updatedAmount = parseFloat(editFormData.amount);
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .update({
+        amount: updatedAmount,
+        type: editFormData.type,
+        category: editFormData.category,
+        description: editFormData.description,
+        date: editFormData.date
+      })
+      .eq('id', selectedTxDetail.id)
+      .select();
+
+    if (error) {
+      alert(`Gagal memperbarui log cloud: ${error.message}`);
+    } else if (data) {
+      // Perbarui state lokal secara instan menggunakan mapping array
+      setTransactions(transactions.map(t => t.id === selectedTxDetail.id ? data[0] : t));
+      setIsEditMode(false);
+      setSelectedTxDetail(null); // Tutup modal pop-up
+    }
+  };
+  // =================================================================================
+
   const handleDelete = async (id, e) => {
     e.stopPropagation();
     if (window.confirm("Hapus log transaksi ini dari database cloud?")) {
@@ -264,24 +308,24 @@ function App() {
         <main className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5 relative z-10 w-full">
           {/* TOP CARDS */}
           <div className="md:col-span-3 grid grid-cols-1 gap-4 w-full">
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex items-center justify-between w-full">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex items-center justify-between w-full">
               <div className="truncate pr-2">
                 <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-1">Core Balance</p>
                 <h3 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-blue-600 dark:from-cyan-400 dark:to-blue-400 truncate">
                   Rp {summary.balance.toLocaleString('id-ID')}
                 </h3>
               </div>
-              <div className="bg-cyan-50 dark:bg-cyan-950/60 p-4 rounded-xl border border-cyan-200 border-cyan-500/20 text-cyan-600 dark:text-cyan-400 shrink-0"><Wallet size={28} /></div>
+              <div className="bg-cyan-50 dark:bg-cyan-950/60 p-4 rounded-xl border border-cyan-200 dark:border-cyan-500/20 text-cyan-600 dark:text-cyan-400 shrink-0"><Wallet size={28} /></div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 w-full">
-              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex flex-col w-full">
+              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col w-full">
                 <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-2">Inflow Stream</p>
                 <h3 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 truncate">
                   Rp {summary.total_income.toLocaleString('id-ID')}
                 </h3>
               </div>
-              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 border-slate-800 shadow-lg flex flex-col w-full">
+              <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg flex flex-col w-full">
                 <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest font-mono mb-2">Outflow Burn</p>
                 <h3 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-rose-600 dark:from-pink-400 dark:to-rose-400 truncate">
                   Rp {summary.total_expense.toLocaleString('id-ID')}
@@ -289,7 +333,7 @@ function App() {
               </div>
             </div>
 
-            {/* RUNWAY PREDICTOR BANNER */}
+            {/* WIDGET RUNWAY PREDICTOR BANNER */}
             <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-transparent border border-cyan-500/20 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs transition-all">
               <div className="flex-1">
                 <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 font-black tracking-wider uppercase mb-1">
@@ -305,7 +349,7 @@ function App() {
           </div>
 
           {/* CHART WIDGET */}
-          <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
+          <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg md:col-span-1 flex flex-col justify-between">
             <div className="flex items-center gap-3 mb-2">
               <div className="text-cyan-600 dark:text-cyan-400 p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-xl"><PieChartIcon size={18} /></div>
               <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Proporsi Alokasi</h4>
@@ -340,7 +384,7 @@ function App() {
                 <p className="text-xs text-slate-400 italic font-mono">Belum ada data pengeluaran</p>
               )}
             </div>
-            <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 border-slate-100 text-center flex flex-col justify-center">
+            <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 border-slate-200 text-center flex flex-col justify-center">
                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono mb-1">Pengeluaran Terbesar</p>
                <p className="text-sm font-black text-cyan-600 dark:text-cyan-400 capitalize truncate px-1">{summary.top_category}</p>
             </div>
@@ -348,7 +392,7 @@ function App() {
 
           {/* TARGET & LOGS */}
           <div className="md:col-span-2 grid grid-cols-1 gap-5">
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-3">
                   <div className="text-purple-600 dark:text-purple-400 p-2 bg-purple-50 dark:bg-purple-950/50 rounded-xl"><Target size={18} /></div>
@@ -356,12 +400,12 @@ function App() {
                 </div>
                 <button onClick={() => setIsTargetModalOpen(true)} className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-mono text-[10px] font-bold rounded-lg border border-purple-200 border-purple-500/30">CONFIG</button>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 border-slate-100 w-full">
+              <div className="bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 border-slate-200 w-full">
                 <div className="flex justify-between mb-3 gap-2">
                   <p className="text-xs md:text-sm font-black text-slate-800 dark:text-slate-100 truncate">{savingTarget.name}</p>
                   <p className="text-xs md:text-sm font-bold text-purple-600 dark:text-purple-400 shrink-0">Rp {savingTarget.price.toLocaleString('id-ID')}</p>
                 </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-3 border border-slate-300 border-slate-800 overflow-hidden">
+                <div className="w-full bg-slate-200 dark:bg-slate-900 rounded-full h-3 border border-slate-300 dark:border-slate-800 overflow-hidden">
                   <div className="bg-gradient-to-r from-cyan-500 to-purple-500 h-full rounded-full" style={{ width: `${targetProgress}%` }}></div>
                 </div>
                 <div className="mt-3 flex justify-between items-center text-[10px] font-mono border-t border-slate-200/50 dark:border-slate-800/60 pt-2.5">
@@ -371,25 +415,25 @@ function App() {
               </div>
             </div>
 
-            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-slate-200 border-slate-800 w-full shadow-lg">
+            <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 w-full shadow-lg">
               <div className="flex flex-col sm:flex-row gap-3 w-full mb-4">
                 <div className="relative flex-1">
-                  <input type="text" placeholder="Cari log catatan..." className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 border-slate-800 text-xs md:text-sm rounded-xl focus:outline-none w-full font-mono text-slate-800 dark:text-slate-300" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <input type="text" placeholder="Cari log catatan..." className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs md:text-sm rounded-xl focus:outline-none w-full font-mono text-slate-800 dark:text-slate-300" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex bg-slate-50 dark:bg-slate-950 p-1.5 rounded-xl border border-slate-200 border-slate-100 text-[10px] md:text-xs font-mono font-bold transition-colors">
+                  <div className="flex bg-slate-50 dark:bg-slate-950 p-1.5 rounded-xl border border-slate-200 border-slate-200 text-[10px] md:text-xs font-mono font-bold transition-colors">
                     <button onClick={() => setFilterType('all')} className={`px-3 py-1.5 rounded-lg ${filterType === 'all' ? 'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 shadow-sm' : 'text-slate-500'}`}>ALL</button>
                     <button onClick={() => setFilterType('income')} className={`px-3 py-1.5 rounded-lg ${filterType === 'income' ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 shadow-sm' : 'text-slate-500'}`}>IN</button>
                     <button onClick={() => setFilterType('expense')} className={`px-3 py-1.5 rounded-lg ${filterType === 'expense' ? 'bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-400 shadow-sm' : 'text-slate-500'}`}>OUT</button>
                   </div>
-                  <button onClick={() => downloadTransactionsAsCSV(transactions)} title="Download data untuk Python Analytics (.csv)" className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 border-slate-100 rounded-xl text-slate-600 dark:text-slate-400 hover:text-cyan-500 dark:hover:text-cyan-400 hover:border-cyan-200 dark:hover:border-cyan-900/50 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 font-mono text-xs font-bold">
+                  <button onClick={() => downloadTransactionsAsCSV(transactions)} title="Download data untuk Python Analytics (.csv)" className="p-2.5 bg-slate-100 dark:bg-slate-950 border border-slate-200 border-slate-200 rounded-xl text-slate-600 dark:text-slate-400 hover:text-cyan-500 dark:hover:text-cyan-400 hover:border-cyan-200 dark:hover:border-cyan-900/50 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 font-mono text-xs font-bold">
                     <Download size={15} /> <span className="hidden sm:inline">EXPORT</span>
                   </button>
                 </div>
               </div>
               <div className="space-y-3 w-full max-h-64 overflow-y-auto pr-2 custom-scrollbar">
                 {filteredTransactions.map((t) => (
-                  <div key={t.id} onClick={() => setSelectedTxDetail(t)} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
+                  <div key={t.id} onClick={() => { setSelectedTxDetail(t); setIsEditMode(false); }} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-950/40 hover:bg-slate-100 dark:hover:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-900 w-full gap-3 cursor-pointer transition-colors group">
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate group-hover:text-cyan-500 transition-colors">{t.description || t.category}</p>
                       <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">{t.date} • <span className="text-purple-500 dark:text-purple-400 font-bold uppercase">{t.category}</span></p>
@@ -455,14 +499,14 @@ function App() {
                          <option key={cat} value={cat}>{cat}</option>
                        ))}
                      </select>
-                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 border-cyan-100 text-cyan-600 dark:text-cyan-400'}`}>
+                     <button type="button" onClick={() => setShowAddCategoryInput(!showAddCategoryInput)} className={`w-full mt-2 p-3 rounded-xl border font-black text-[11px] text-center tracking-wider transition-all block active:scale-95 ${showAddCategoryInput ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/30 text-rose-600 dark:text-rose-400' : 'bg-cyan-50/50 dark:bg-cyan-950/20 border-dashed border-cyan-200 border-cyan-200 text-cyan-600 dark:text-cyan-400'}`}>
                        {showAddCategoryInput ? '✕ BATAL KATEGORI' : '+ TAMBAH KATEGORI'}
                      </button>
                    </div>
                 </div>
 
                 {showAddCategoryInput && (
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-100 flex gap-2">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 border-slate-200 flex gap-2">
                     <input type="text" placeholder="Nama kategori baru..." className="w-full p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 border-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none" value={customCategoryName} onChange={(e) => setCustomCategoryName(e.target.value)} />
                     <button type="button" onClick={handleAddCustomCategory} className="px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-bold shrink-0 transition-colors">ADD</button>
                   </div>
@@ -481,44 +525,83 @@ function App() {
          </div>
       )}
 
-      {/* MODAL DETAIL POP-UP */}
+      {/* INTERAKTIF MODAL DETAIL POP-UP (SUDAH MENDUKUNG EDIT MODE INTEGRAL) */}
       {selectedTxDetail && (
-        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full" onClick={() => setSelectedTxDetail(null)}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-colors" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setSelectedTxDetail(null)} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
-            <h3 className="text-sm font-black mb-5 text-slate-500 uppercase tracking-widest">Detail Transaksi</h3>
-            <div className="space-y-4">
-              <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 border-slate-900 text-center">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Mutasi</p>
-                <p className={`text-2xl font-black ${selectedTxDetail.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
-                  {selectedTxDetail.type === 'income' ? '+' : '-'} Rp {parseFloat(selectedTxDetail.amount).toLocaleString('id-ID')}
-                </p>
-              </div>
-              <div className="space-y-2.5 px-1">
-                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
-                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Layers size={14} /> Arus Data</span>
-                  <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>{selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}</span>
+        <div className="fixed inset-0 bg-slate-900/40 dark:bg-black/80 flex items-center justify-center p-4 z-50 w-full h-full" onClick={() => { setSelectedTxDetail(null); setIsEditMode(false); }}>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 border-slate-800 w-full max-w-sm rounded-2xl p-6 relative shadow-2xl transition-all" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => { setSelectedTxDetail(null); setIsEditMode(false); }} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X size={18} /></button>
+            <h3 className="text-sm font-mono font-black mb-5 text-slate-500 uppercase tracking-widest">{isEditMode ? 'Edit Mutasi Cloud' : 'Detail Transaksi'}</h3>
+            
+            {isEditMode ? (
+              /* PANEL FORM INPUT EDIT (MODE AKTIF) */
+              <form onSubmit={handleEditSubmit} className="space-y-4 text-xs font-mono">
+                <div>
+                  <label className="block font-bold text-slate-400 uppercase mb-1.5">Nominal Uang (Rp)</label>
+                  <input type="number" required className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-cyan-500 font-bold" value={editFormData.amount} onChange={(e) => setEditFormData({...editFormData, amount: e.target.value})} />
                 </div>
-                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
-                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Tag size={14} /> Kategori</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 capitalize">{selectedTxDetail.category}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-400 uppercase mb-1.5">Arus Data</label>
+                    <select className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-300 focus:outline-none" value={editFormData.type} onChange={(e) => setEditFormData({...editFormData, type: e.target.value})}>
+                      <option value="expense">OUTFLOW</option><option value="income">INFLOW</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-400 uppercase mb-1.5">Kategori</label>
+                    <select className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-300 focus:outline-none" value={editFormData.category} onChange={(e) => setEditFormData({...editFormData, category: e.target.value})}>
+                      {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 border-slate-100 pb-2">
-                  <span className="text-slate-400 font-bold flex items-center gap-1.5"><Calendar size={14} /> Tanggal</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{selectedTxDetail.date}</span>
+                <div>
+                  <label className="block font-bold text-slate-400 uppercase mb-1.5">Tanggal Mutasi</label>
+                  <input type="date" required className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-300" value={editFormData.date} onChange={(e) => setEditFormData({...editFormData, date: e.target.value})} />
                 </div>
-                <div className="pt-1">
-                  <span className="text-slate-400 font-bold block mb-1">Rincian Deskripsi:</span>
-                  <p className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-800 dark:text-slate-300 font-sans text-sm leading-relaxed border border-slate-100 border-slate-900 break-words">
-                    {selectedTxDetail.description || <span className="italic text-xs text-slate-400 font-mono">Tidak ada keterangan deskripsi</span>}
+                <div>
+                  <label className="block font-bold text-slate-400 uppercase mb-1.5">Deskripsi</label>
+                  <input type="text" className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-300" value={editFormData.description} onChange={(e) => setEditFormData({...editFormData, description: e.target.value})} />
+                </div>
+                <div className="pt-2 flex gap-2">
+                  <button type="button" onClick={() => setIsEditMode(false)} className="w-1/2 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-400 rounded-xl font-bold border border-slate-200 dark:border-slate-800">BATAL</button>
+                  <button type="submit" className="w-1/2 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold shadow-md shadow-cyan-600/10">SIMPAN</button>
+                </div>
+              </form>
+            ) : (
+              /* PANEL PREVIEW DETAIL (MODE PASIF STATIS) */
+              <div className="space-y-4 text-xs font-mono">
+                <div className="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-100 border-slate-900 text-center">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nominal Mutasi</p>
+                  <p className={`text-2xl font-black ${selectedTxDetail.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-pink-600 dark:text-pink-400'}`}>
+                    {selectedTxDetail.type === 'income' ? '+' : '-'} Rp {parseFloat(selectedTxDetail.amount).toLocaleString('id-ID')}
                   </p>
                 </div>
+                <div className="space-y-2.5 px-1">
+                  <div className="flex justify-between border-b border-slate-100 border-slate-200 pb-2">
+                    <span className="text-slate-400 font-bold flex items-center gap-1.5"><Layers size={14} /> Arus Data</span>
+                    <span className={`font-black text-[11px] px-2 py-0.5 rounded ${selectedTxDetail.type === 'income' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-pink-50 text-pink-600 dark:bg-pink-950/40 dark:text-pink-400'}`}>{selectedTxDetail.type === 'income' ? 'INFLOW' : 'OUTFLOW'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-100 border-slate-200 pb-2">
+                    <span className="text-slate-400 font-bold flex items-center gap-1.5"><Tag size={14} /> Kategori</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 capitalize">{selectedTxDetail.category}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-100 border-slate-200 pb-2">
+                    <span className="text-slate-400 font-bold flex items-center gap-1.5"><Calendar size={14} /> Tanggal</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{selectedTxDetail.date}</span>
+                  </div>
+                  <div className="pt-1">
+                    <span className="text-slate-400 font-bold block mb-1">Rincian Deskripsi:</span>
+                    <p className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl text-slate-800 dark:text-slate-300 font-sans text-sm leading-relaxed border border-slate-100 border-slate-900 break-words">
+                      {selectedTxDetail.description || <span className="italic text-xs text-slate-400 font-mono">Tidak ada keterangan deskripsi</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-3 flex gap-2">
+                  <button onClick={handleStartEdit} className="w-1/3 py-2.5 bg-cyan-50 dark:bg-cyan-950/30 text-cyan-600 dark:text-cyan-400 rounded-xl font-bold border border-cyan-200 dark:border-cyan-900/30 hover:bg-cyan-100 transition-colors flex items-center justify-center gap-1"><Edit3 size={14} /> EDIT</button>
+                  <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 dark:border-rose-100 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
+                  <button onClick={() => setSelectedTxDetail(null)} className="w-1/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 dark:border-slate-800 transition-colors">TUTUP</button>
+                </div>
               </div>
-              <div className="pt-3 flex gap-2">
-                <button onClick={() => setSelectedTxDetail(null)} className="w-2/3 py-2.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-400 rounded-xl font-bold border border-slate-200 border-slate-800 transition-colors">TUTUP</button>
-                <button onClick={(e) => handleDelete(selectedTxDetail.id, e)} className="w-1/3 py-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl font-bold border border-rose-200 border-rose-100 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14} /> HAPUS</button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
