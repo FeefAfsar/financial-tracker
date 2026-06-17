@@ -180,16 +180,52 @@ function App() {
 
   return (
     <div 
-      className="min-h-screen bg-zinc-50 dark:bg-neutral-950 text-zinc-900 dark:text-zinc-100 p-4 pb-28 md:p-8 transition-colors duration-300 relative w-full max-w-[100vw] overflow-x-hidden"
+      className="min-h-screen bg-zinc-50 dark:bg-neutral-950 text-zinc-900 dark:text-zinc-100 p-4 pb-28 md:p-8 transition-colors duration-500 relative w-full max-w-[100vw] overflow-x-hidden selection:bg-emerald-500/20"
       style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
     >
-      {/* Injeksi Google Font Plus Jakarta Sans secara dinamis */}
+      {/* INJEKSI OTOMATIS FONT & CORE ESSENTIAL FLUID ANIMATION ENGINE */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+        
+        /* Apple & Vercel Style Custom Premium Easing Curve */
+        .fluid-bounce { transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+        .click-feedback { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+        .click-feedback:active { transform: scale(0.96); }
+
+        /* Keyframes Kedatangan Dashboard */
+        @keyframes fluidFadeUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes overlayFade {
+          from { opacity: 0; backdrop-filter: blur(0px); }
+          to { opacity: 1; backdrop-filter: blur(8px); }
+        }
+        @keyframes modalSpring {
+          from { opacity: 0; transform: scale(0.96) translateY(12px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* Utility Classes */
+        .animate-dashboard-load { animation: fluidFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-overlay-show { animation: overlayFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-modal-show { animation: modalSpring 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* Stagger delays untuk efek koreografi kedatangan */
+        .delay-card-1 { animation-delay: 50ms; opacity: 0; }
+        .delay-card-2 { animation-delay: 120ms; opacity: 0; }
+        .delay-card-3 { animation-delay: 180ms; opacity: 0; }
+        .delay-card-4 { animation-delay: 240ms; opacity: 0; }
+
+        /* Custom scrollbar premium */
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 99px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; }
       `}</style>
       
-      <div className="absolute top-0 left-0 w-full h-96 bg-emerald-500/5 dark:bg-emerald-500/5 rounded-full blur-3xl pointer-events-none transition-colors"></div>
+      <div className="absolute top-0 left-0 w-full h-96 bg-emerald-500/[0.03] dark:bg-emerald-500/[0.02] rounded-full blur-3xl pointer-events-none"></div>
 
       <Header theme={theme} toggleTheme={toggleTheme} />
 
@@ -209,7 +245,8 @@ function App() {
         </main>
       )}
 
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 bg-emerald-600 dark:bg-emerald-500 text-white p-4 rounded-full shadow-xl z-50 hover:scale-110 active:scale-95 transition-transform"><Plus size={28} /></button>
+      {/* FAB Button dengan feedback pegas empuk */}
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 bg-emerald-600 dark:bg-emerald-500 text-white p-4 rounded-full shadow-lg z-50 hover:scale-110 active:scale-90 shadow-emerald-600/20 transition-transform duration-300 ease-out"><Plus size={26} /></button>
 
       <InputModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} formData={formData} setFormData={setFormData} handleSubmit={handleSubmit} handleScanReceipt={handleScanReceipt} isScanning={isScanning} categories={categories} showAddCategoryInput={showAddCategoryInput} setShowAddCategoryInput={setShowAddCategoryInput} customCategoryName={customCategoryName} setCustomCategoryName={setCustomCategoryName} handleAddCustomCategory={handleAddCustomCategory} />
       <DetailModal selectedTxDetail={selectedTxDetail} onClose={() => { setSelectedTxDetail(null); setIsEditMode(false); }} isEditMode={isEditMode} setIsEditMode={setIsEditMode} editFormData={editFormData} setEditFormData={setEditFormData} handleEditSubmit={handleEditSubmit} categories={categories} handleDelete={handleDelete} />
