@@ -8,6 +8,9 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+const SUPABASE_URL = 'https://wxietqhqajmgguczcdci.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4aWV0cWhxYWptZ2d1Y3pjZGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MDE3MzYsImV4cCI6MjA5NzI3NzczNn0._lKMrJ2aQIaYHU0XJbVt5XbS5AdR4bKxpchCiutAmyc';
+
   const [summary, setSummary] = useState({ balance: 0, total_income: 0, total_expense: 0, category_expenses: [], top_category: 'Belum Ada', burn_rate: 0 });
   
   const [savingTarget, setSavingTarget] = useState(() => {
